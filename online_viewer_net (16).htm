@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subwoofer Test Tone Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background-color: #121212;
+      color: #ffffff;
+    }
+    h1 {
+      color: #ff5722;
+    }
+    .slider-container {
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+    }
+    #frequency-slider {
+      width: 80%;
+    }
+    .frequency {
+      font-size: 1.2em;
+      margin-bottom: 10px;
+    }
+    #meter {
+      width: 80%;
+      max-width: 600px;
+      height: 20px;
+      margin: 20px auto;
+      border: 1px solid #555;
+      background-color: #333;
+      position: relative;
+    }
+    #meter-fill {
+      height: 100%;
+      background-color: #ff5722;
+      width: 0%;
+    }
+    #oscilloscope {
+      width: 80%;
+      max-width: 800px;
+      height: 300px;
+      margin: 20px auto;
+      border: 2px solid #555;
+      background-color: #222;
+    }
+    .controls {
+      margin: 20px 0;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 1em;
+      background-color: #ff5722;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:disabled {
+      background-color: #555;
+    }
+    .warning {
+      color: #ff9800;
+      margin: 20px 0;
+      font-size: 1.1em;
+    }
+    .disclaimer {
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #aaaaaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Subwoofer Test Tone Generator</h1>
+  <div class="frequency">Frequency: <span id="frequency-value">1</span> Hz</div>
+  <div class="slider-container">
+    <input type="range" id="frequency-slider" min="1" max="1000" value="1" step="1">
+  </div>
+  <div id="meter">
+    <div id="meter-fill"></div>
+  </div>
+  <canvas id="oscilloscope"></canvas>
+
+  <div class="controls">
+    <button id="play-btn">Play</button>
+    <button id="pause-btn" disabled>Pause</button>
+    <button id="sweep-low-high-btn">Sweep Low to High</button>
+    <button id="sweep-high-low-btn">Sweep High to Low</button>
+  </div>
+
+  <div class="warning">
+    ⚠️ Warning: High volumes and low frequencies can damage speakers or hearing.<br>
+    Use this tool responsibly at a safe volume.
+  </div>
+
+  <div class="disclaimer">
+    Disclaimer: SLT SOUND will not be held responsible for any damage caused to audio equipment, speakers, or hearing due to misuse of this tool.
+  </div>
+
+  <script>
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    let oscillator, analyser, dataArray, canvas, canvasCtx, animationFrame;
+    let isPlaying = false;
+
+    const frequencySlider = document.getElementById('frequency-slider');
+    const frequencyValue = document.getElementById('frequency-value');
+    const playButton = document.getElementById('play-btn');
+    const pauseButton = document.getElementById('pause-btn');
+    const sweepLowHighButton = document.getElementById('sweep-low-high-btn');
+    const sweepHighLowButton = document.getElementById('sweep-high-low-btn');
+    const meterFill = document.getElementById('meter-fill');
+    const oscilloscope = document.getElementById('oscilloscope');
+    canvas = oscilloscope;
+    canvasCtx = canvas.getContext('2d');
+
+    canvas.width = 800;
+    canvas.height = 300;
+
+    function drawOscilloscope() {
+      if (!analyser) return;
+
+      analyser.getByteTimeDomainData(dataArray);
+
+      canvasCtx.fillStyle = "#222";
+      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+      canvasCtx.lineWidth = 2;
+      canvasCtx.strokeStyle = "#ff5722";
+
+      canvasCtx.beginPath();
+
+      const sliceWidth = canvas.width / dataArray.length;
+      let x = 0;
+
+      for (let i = 0; i < dataArray.length; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * canvas.height) / 2;
+
+        if (i === 0) {
+          canvasCtx.moveTo(x, y);
+        } else {
+          canvasCtx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+      }
+
+      canvasCtx.lineTo(canvas.width, canvas.height / 2);
+      canvasCtx.stroke();
+
+      animationFrame = requestAnimationFrame(drawOscilloscope);
+    }
+
+    function updateFrequency(frequency) {
+      frequencyValue.textContent = frequency;
+      const fillPercentage = (frequency / 1000) * 100;
+      meterFill.style.width = `${fillPercentage}%`;
+      if (oscillator) {
+        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      }
+    }
+
+    function createOscillator() {
+      oscillator = audioContext.createOscillator();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      dataArray = new Uint8Array(analyser.fftSize);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequencySlider.value, audioContext.currentTime);
+      oscillator.connect(analyser);
+      analyser.connect(audioContext.destination);
+      oscillator.start();
+
+      drawOscilloscope();
+    }
+
+    playButton.addEventListener('click', () => {
+      if (!isPlaying) {
+        createOscillator();
+        isPlaying = true;
+        playButton.disabled = true;
+        pauseButton.disabled = false;
+      }
+    });
+
+    pauseButton.addEventListener('click', () => {
+      if (isPlaying) {
+        oscillator.stop();
+        cancelAnimationFrame(animationFrame);
+        isPlaying = false;
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+      }
+    });
+
+    frequencySlider.addEventListener('input', () => {
+      updateFrequency(frequencySlider.value);
+    });
+
+    sweepLowHighButton.addEventListener('click', () => {
+      let freq = 1;
+      createOscillator();
+      const interval = setInterval(() => {
+        if (freq >= 1000) {
+          clearInterval(interval);
+          oscillator.stop();
+        }
+        updateFrequency(freq);
+        freq += 10; 
+      }, 10);
+    });
+
+    sweepHighLowButton.addEventListener('click', () => {
+      let freq = 1000;
+      createOscillator();
+      const interval = setInterval(() => {
+        if (freq <= 1) {
+          clearInterval(interval);
+          oscillator.stop();
+        }
+        updateFrequency(freq);
+        freq -= 10; 
+      }, 10);
+    });
+  </script>
+</body>
+</html>
